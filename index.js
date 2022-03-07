@@ -13,7 +13,7 @@ const app = express();
 // const mySocket = new Socket({ network: 3 });
 
 app.use(cors({
-    origin: SERVER_URL
+    origin: "*"
 }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
