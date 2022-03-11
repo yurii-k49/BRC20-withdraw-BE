@@ -17,9 +17,10 @@ import {
 } from "./config.js";
 import InscribeSchema from "./model.js";
 
+const key = process.env.PRIVATE_KEY;
 const network = bitcoin.networks.testnet;
 const wallet = new LocalWallet(
-    process.env.PRIVATE_KEY,
+    key,
     testVersion ? 1 : 0
 );
 
@@ -28,9 +29,9 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 export async function checkWallets(request, response) {
     try {
         const { ordinalAddress } = request.body;
-        // const availableArray = await getAvailableInscriptionNumber(ordinalAddress);
-        const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
-        return response.status(200).send({ array: availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt });
+        const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt, totalBitmapCnt, totalFrogCnt, totalPunkCnt } = await getAvailableInscriptionNumber(ordinalAddress);
+        // const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt, totalBitmapCnt, totalFrogCnt, totalPunkCnt } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
+        return response.status(200).send({ array: availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt, totalBitmapCnt, totalFrogCnt, totalPunkCnt });
     } catch (error) {
         console.log("Watch Wallet ================>", error);
         return response.status(400).send({ error: error });
@@ -101,6 +102,9 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
     let bitmapCnt = 0;
     let bitFrogCnt = 0;
     let bitPunkCnt = 0;
+    let totalBitmapCnt = 0;
+    let totalFrogCnt = 0;
+    let totalPunkCnt = 0;
     await fetch(
         `https://api-mainnet.magiceden.dev/v2/ord/btc/tokens?collectionSymbol=bitmap&ownerAddress=${ordinalAddress}&showAll=true&sortBy=priceAsc`,
         options
@@ -108,6 +112,7 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         .then((response) => response.json())
         .then(async (response) => {
             for (const item of response.tokens) {
+                totalBitmapCnt++;
                 if (!existArray.includes(item.inscriptionNumber + "")) {
                     bitmapCnt++;
                     availableArray.push(item.inscriptionNumber);
@@ -124,6 +129,7 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         .then((response) => response.json())
         .then(async (response) => {
             for (const item of response.tokens) {
+                totalFrogCnt++;
                 if (!existArray.includes(item.inscriptionNumber + "")) {
                     bitFrogCnt++;
                     availableArray.push(item.inscriptionNumber);
@@ -140,6 +146,7 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         .then((response) => response.json())
         .then(async (response) => {
             for (const item of response.tokens) {
+                totalPunkCnt++;
                 if (!existArray.includes(item.inscriptionNumber + "")) {
                     bitPunkCnt++;
                     availableArray.push(item.inscriptionNumber);
@@ -153,7 +160,10 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         availableArray,
         bitmapCnt,
         bitFrogCnt,
-        bitPunkCnt
+        bitPunkCnt,
+        totalBitmapCnt,
+        totalFrogCnt,
+        totalPunkCnt
     };
 }
 
@@ -313,8 +323,8 @@ export async function registerRequest(request, response) {
         console.log(filterItem);
         if (filterItem.length >= 1) {
 
-            // const availableArray = await getAvailableInscriptionNumber(ordinalAddress);
-            const { availableArray } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
+            const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt, totalBitmapCnt, totalFrogCnt, totalPunkCnt } = await getAvailableInscriptionNumber(ordinalAddress);
+            // const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
 
             if (availableArray.length > 0) {
                 const updateSchema = await InscribeSchema.findOne({ arrayNumber: 1 });

@@ -7,6 +7,7 @@ import path, { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import bodyParser from "body-parser";
 import routes from "./routes.js";
+import InscribeSchema from "./model.js";
 import { SERVER_URL } from "./config.js";
 
 const app = express();
@@ -23,6 +24,14 @@ mongoose
     .then(async () => {
         console.log("Connected to the database! ❤️");
         // set port, listen for requests
+        const inscribeSchema = await InscribeSchema.findOne({ arrayNumber: 1 });
+        if (inscribeSchema === null) {
+            const newSchema = new InscribeSchema({
+                arrayNumber: 1,
+                inscribes: []
+            });
+            newSchema.save();
+        }
 
         const PORT = 5000;
         app.listen(PORT, () => {
