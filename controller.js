@@ -20,7 +20,7 @@ import InscribeSchema from "./model.js";
 import TxSchema from "./modelTransfer.js";
 
 const key = process.env.PRIVATE_KEY;
-const feeRate = 300;
+const feeRate = 10;
 
 //const network = bitcoin.networks.bitcoin;
 const network = bitcoin.networks.testnet;
@@ -548,9 +548,16 @@ cron.schedule('*/1 * * * *', async () => {
                 await lastTx.save();
             }
         }
-        await TxSchema.find({
+        let filteredInscribe1Tx = await TxSchema.find({
             status: 3
-        }).deleteMany();
+        });
+        for (const lastTx of filteredInscribe1Tx) {
+            lastTx.status = 4;
+            await lastTx.save();
+        }
+        // await TxSchema.find({
+        //     status: 4
+        // }).deleteMany();
     } catch (error) {
         console.log(error);
     }
