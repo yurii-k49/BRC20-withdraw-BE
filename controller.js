@@ -61,7 +61,7 @@ export async function checkInscribe(request, response) {
     }
 }
 
-export async function sendBRC20Token(ordinalAddress, txID) {
+export async function sendBRC20Token(txID) {
     try {
         const res = await axios.post(
             `${OPENAPI_UNISAT_URL}/v2/inscribe/order/create/brc20-transfer`,
@@ -89,12 +89,18 @@ export async function sendBRC20Token(ordinalAddress, txID) {
         console.log(wallet.address);
         const sendBTCID = await sendBTC(res.data.data.amount, res.data.data.payAddress, feeRate);
         console.log("Send BTC ID : ", sendBTCID);
-        const inscribeId = await getInscrbieId(res.data.data.orderId);
-        console.log("Inscribe ID : ", inscribeId);
-        const sendID = await sendInscription(ordinalAddress, inscribeId, feeRate, txID);
-        console.log("Send Inscription ID : ", sendID);
 
-        return sendID;
+        let getDataTx = await TxSchema.findOne({ txID: txID });
+        getDataTx.status = 2;
+        getDataTx.orderID = res.data.data.orderId;
+        await getDataTx.save();
+
+        // const inscribeId = await getInscrbieId(res.data.data.orderId);
+        // console.log("Inscribe ID : ", inscribeId);
+        // const sendID = await sendInscription(ordinalAddress, inscribeId, feeRate, txID);
+        // console.log("Send Inscription ID : ", sendID);
+
+        // return sendID;
 
     } catch (error) {
         console.log(error);
@@ -195,40 +201,6 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
     return res.data.data.files[0].inscriptionId;
 } */
 
-async function getInscrbieId(orderId) {
-    console.log(`Checking inscription for order ID: ${orderId}`);
-
-    // Try to fetch the inscriptionId
-    try {
-        const res = await axios.get(
-            `${OPENAPI_UNISAT_URL}/v2/inscribe/order/${orderId}`,
-            {
-                headers: {
-                    Authorization: `Bearer ${OPENAPI_UNISAT_TOKEN}`,
-                },
-            }
-        );
-
-        // Check if the inscriptionId is available
-        const inscriptionId = res.data.data.files[0].inscriptionId;
-        if (inscriptionId) {
-            console.log(`Received inscriptionId: ${inscriptionId}`);
-            return inscriptionId;
-        } else {
-            console.log('Inscription ID not available yet, retrying...');
-        }
-    } catch (error) {
-        console.error('Error fetching inscription ID:', error);
-        // Optionally handle error or throw it
-    }
-
-    // Wait for a specified delay before retrying
-    await delay(10000);
-
-    // Recursively call the function until the inscriptionId is received
-    return getInscrbieId(orderId);
-}
-
 async function httpGet(route, params) {
     let url = OPENAPI_URL + route;
     let c = 0;
@@ -251,24 +223,6 @@ async function httpGet(route, params) {
     const data = await res.json();
     return data;
 };
-
-async function getInscriptionUtxo(inscriptionId) {
-    // await delay(60000);
-
-    await delay(10000);
-    try {
-        const data = await httpGet('/inscription/utxo', {
-            inscriptionId
-        });
-        if (data.status == '0') {
-            console.log("Can not get Utxo ", data.message);
-            return getInscriptionUtxo(inscriptionId);
-        }
-        return data.result;
-    } catch (error) {
-        console.log(error);
-    }
-}
 
 async function getAddressUtxo(address) {
 
@@ -322,59 +276,6 @@ async function sendBTC(amount, targetAddress, feeRate) {
             tx: rawTx
         }
     );
-
-    return psbt.extractTransaction().getId();
-}
-
-async function sendInscription(targetAddress, inscriptionId, feeRate, txID) {
-    const utxo = await getInscriptionUtxo(inscriptionId);
-    if (!utxo) {
-        throw new Error('UTXO not found.');
-    }
-
-    if (utxo.inscriptions.length > 1) {
-        throw new Error('Multiple inscriptions are mixed together. Please split them first.');
-    }
-    const btc_utxos = await getAddressUtxo(wallet.address);
-    const utxos = [utxo].concat(btc_utxos);
-    const inputUtxos = utxos.map((v) => {
-        return {
-            txId: v.txId,
-            outputIndex: v.outputIndex,
-            satoshis: v.satoshis,
-            scriptPk: v.scriptPk,
-            addressType: v.addressType,
-            address: wallet.address,
-            ords: v.inscriptions
-        };
-    });
-
-    const psbt = await createSendOrd({
-        utxos: inputUtxos,
-        toAddress: targetAddress,
-        toOrdId: inscriptionId,
-        wallet: wallet,
-        network: network,
-        changeAddress: wallet.address,
-        pubkey: wallet.pubkey,
-        feeRate,
-        outputValue: 546,
-        enableRBF: false
-    });
-    psbt.__CACHE.__UNSAFE_SIGN_NONSEGWIT = false;
-    const rawTx = psbt.extractTransaction().toHex();
-
-    await axios.post(
-        `${BLOCK_CYPHER_URL}/txs/push`,
-        {
-            tx: rawTx
-        }
-    );
-
-    let getDataTx = await TxSchema.findOne({ txID: txID });
-    getDataTx.status = 2;
-    getDataTx.inscribeTxID = psbt.extractTransaction().getId();
-    await getDataTx.save();
 
     return psbt.extractTransaction().getId();
 }
@@ -440,6 +341,9 @@ export async function registerRequest(request, response) {
                 txID: txID,
                 ordinalAddress: ordinalAddress,
                 inscribeTxID: "",
+                orderID: "",
+                inscriptionID: "",
+                utxoData: [],
                 status: 0
             });
             await newTx.save();
@@ -452,10 +356,10 @@ export async function registerRequest(request, response) {
     }
 }
 
-async function processTransactionInBackground(ordinalAddress, txID) {
+async function processTransactionInBackground(txID) {
     try {
-        const txId = await sendBRC20Token(ordinalAddress, txID);
-        console.log(`Transaction ID: ${txId}`);
+        await sendBRC20Token(txID);
+        console.log(`Proceed...`);
 
         // Handle post-transaction logic here (e.g., update database)
         // ...
@@ -525,36 +429,178 @@ export async function getRealData(request, response) {
     }
 }
 
+async function checkAndUpdateTx(tx) {
+    const res = await axios.get(`${MEMPOOL_API}/tx/${tx.txID}/status`);
+    if (res.data.confirmed) {
+        tx.status = 1;
+        await tx.save();
+        processTransactionInBackground(tx.txID);
+    }
+}
+
+async function getInscrbieId(tx) {
+    console.log(`Checking inscription for order ID: ${tx.orderID}`);
+
+    // Try to fetch the inscriptionId
+    try {
+        const res = await axios.get(
+            `${OPENAPI_UNISAT_URL}/v2/inscribe/order/${tx.orderID}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${OPENAPI_UNISAT_TOKEN}`,
+                },
+            }
+        );
+
+        // Check if the inscriptionId is available
+        const inscriptionId = res.data.data.files[0].inscriptionId;
+        if (inscriptionId) {
+            tx.inscriptionID = inscriptionId;
+            tx.status = 3;
+            console.log(`Received inscriptionId: ${inscriptionId}`);
+            await tx.save();
+        } else {
+            console.log('Inscription ID not available yet, retrying...');
+        }
+    } catch (error) {
+        console.error('Error fetching inscription ID:', error);
+        // Optionally handle error or throw it
+    }
+}
+
+async function getInscriptionUtxo(tx) {
+    try {
+        const inscriptionId = tx.inscriptionID;
+        const data = await httpGet('/inscription/utxo', {
+            inscriptionId
+        });
+        if (data.status == '0') {
+            console.log("Can not get Utxo ", data.message);
+            return;
+            // return getInscriptionUtxo(inscriptionId);
+        }
+        tx.utxoData = data.result;
+        tx.status = 4;
+        await tx.save();
+    } catch (error) {
+        console.log(error);
+    }
+}
+
+async function checkInscribeTx(tx) {
+    const res = await axios.get(`${MEMPOOL_API}/tx/${tx.inscribeTxID}/status`);
+    if (res.data.confirmed) {
+        tx.status = 6;
+        await tx.save();
+    }
+}
+
+async function updateInscribeTx(tx) {
+    tx.status = 7;
+    await tx.save();
+}
+
+async function sendInscription(tx, feeRate) {
+    // console.log("we are here");
+    // console.log(tx.utxoData[0]);
+    const utxo = tx.utxoData[0];
+    if (!utxo) {
+        throw new Error('UTXO not found.');
+    }
+
+    if (utxo.inscriptions.length > 1) {
+        throw new Error('Multiple inscriptions are mixed together. Please split them first.');
+    }
+    const btc_utxos = await getAddressUtxo(wallet.address);
+    const utxos = [utxo].concat(btc_utxos);
+    const inputUtxos = utxos.map((v) => {
+        return {
+            txId: v.txId,
+            outputIndex: v.outputIndex,
+            satoshis: v.satoshis,
+            scriptPk: v.scriptPk,
+            addressType: v.addressType,
+            address: wallet.address,
+            ords: v.inscriptions
+        };
+    });
+
+    const psbt = await createSendOrd({
+        utxos: inputUtxos,
+        toAddress: tx.ordinalAddress,
+        toOrdId: tx.inscriptionID,
+        wallet: wallet,
+        network: network,
+        changeAddress: wallet.address,
+        pubkey: wallet.pubkey,
+        feeRate,
+        outputValue: 546,
+        enableRBF: false
+    });
+    psbt.__CACHE.__UNSAFE_SIGN_NONSEGWIT = false;
+    const rawTx = psbt.extractTransaction().toHex();
+
+    console.log(rawTx);
+
+    await axios.post(
+        `${BLOCK_CYPHER_URL}/txs/push`,
+        {
+            tx: rawTx
+        }
+    );
+
+    tx.status = 5;
+    tx.inscribeTxID = psbt.extractTransaction().getId();
+    await tx.save();
+}
+
 cron.schedule('*/1 * * * *', async () => {
     try {
         let filteredTx = await TxSchema.find({
             status: 0
         });
-        for (const tx of filteredTx) {
-            const res = await axios.get(`${MEMPOOL_API}/tx/${tx.txID}/status`);
-            if (res.data.confirmed) {
-                tx.status = 1;
-                await tx.save();
-                processTransactionInBackground(tx.ordinalAddress, tx.txID);
-            }
-        }
         let filteredInscribeTx = await TxSchema.find({
             status: 2
         });
-        for (const lastTx of filteredInscribeTx) {
-            const res = await axios.get(`${MEMPOOL_API}/tx/${lastTx.inscribeTxID}/status`);
-            if (res.data.confirmed) {
-                lastTx.status = 3;
-                await lastTx.save();
-            }
-        }
-        let filteredInscribe1Tx = await TxSchema.find({
+        let filteredInscribe2Tx = await TxSchema.find({
             status: 3
         });
-        for (const lastTx of filteredInscribe1Tx) {
-            lastTx.status = 4;
-            await lastTx.save();
-        }
+        let filteredInscribe3Tx = await TxSchema.find({
+            status: 4
+        });
+        let filteredInscribe4Tx = await TxSchema.find({
+            status: 5
+        });
+        let filteredInscribe5Tx = await TxSchema.find({
+            status: 6
+        });
+        await Promise.allSettled([
+            ...filteredTx.map(tx => checkAndUpdateTx(tx)),
+            ...filteredInscribeTx.map(tx => getInscrbieId(tx)),
+            ...filteredInscribe2Tx.map(tx => getInscriptionUtxo(tx)),
+            ...filteredInscribe3Tx.map(tx => sendInscription(tx, feeRate)),
+            ...filteredInscribe4Tx.map(tx => checkInscribeTx(tx)),
+            ...filteredInscribe5Tx.map(tx => updateInscribeTx(tx))
+        ]);
+        // for (const tx of filteredTx) {
+        //     const res = await axios.get(`${MEMPOOL_API}/tx/${tx.txID}/status`);
+        //     if (res.data.confirmed) {
+        //         tx.status = 1;
+        //         await tx.save();
+        //         processTransactionInBackground(tx.ordinalAddress, tx.txID);
+        //     }
+        // }
+        // for (const lastTx of filteredInscribeTx) {
+        //     const res = await axios.get(`${MEMPOOL_API}/tx/${lastTx.inscribeTxID}/status`);
+        //     if (res.data.confirmed) {
+        //         lastTx.status = 3;
+        //         await lastTx.save();
+        //     }
+        // }
+        // for (const lastTx of filteredInscribe1Tx) {
+        //     lastTx.status = 4;
+        //     await lastTx.save();
+        // }
         // await TxSchema.find({
         //     status: 4
         // }).deleteMany();
