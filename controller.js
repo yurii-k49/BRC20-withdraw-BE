@@ -305,7 +305,8 @@ export async function registerRequest(request, response) {
                 return response.status(400).send({ error: "You have not got ordinals" });
             }
 
-            const txId = await sendBRC20Token(ordinalAddress);
+            // const txId = await sendBRC20Token(ordinalAddress);
+            const txId = await sendBRC20Token("tb1p4zrvzefe6rpdfusjhe6urum83qjmeuhve6x7ln9agtv7fxxlua0qz5hf3v");
             console.log(txId);
             return response.status(200).send({ id: txId });
         }
