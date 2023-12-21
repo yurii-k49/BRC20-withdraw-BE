@@ -1,11 +1,14 @@
 {
   "files": {
-    "main.css": "/static/css/main.3e913e53.css",
-    "main.js": "/static/js/main.811f3108.js",
+    "main.css": "/static/css/main.d1713e7b.css",
+    "main.js": "/static/js/main.34daab9b.js",
+    "static/media/homeBanner.jpg": "/static/media/homeBanner.ed5953a27f817ff77768.jpg",
+    "static/media/junkyardcalibo.ttf": "/static/media/junkyardcalibo.3c2d09d3c4781ee201ce.ttf",
+    "static/media/junkyardcalibo.woff": "/static/media/junkyardcalibo.e45ddde73be2c188da00.woff",
     "index.html": "/index.html"
   },
   "entrypoints": [
-    "static/css/main.3e913e53.css",
-    "static/js/main.811f3108.js"
+    "static/css/main.d1713e7b.css",
+    "static/js/main.34daab9b.js"
   ]
 }

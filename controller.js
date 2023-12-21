@@ -28,8 +28,9 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 export async function checkWallets(request, response) {
     try {
         const { ordinalAddress } = request.body;
-        const availableArray = await getAvailableInscriptionNumber(ordinalAddress);
-        return response.status(200).send({ array: availableArray });
+        // const availableArray = await getAvailableInscriptionNumber(ordinalAddress);
+        const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
+        return response.status(200).send({ array: availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt });
     } catch (error) {
         console.log("Watch Wallet ================>", error);
         return response.status(400).send({ error: error });
@@ -97,6 +98,9 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
     const inscribeSchema = await InscribeSchema.findOne({ arrayNumber: 1 });
     const existArray = inscribeSchema.inscribes;
     const availableArray = [];
+    let bitmapCnt = 0;
+    let bitFrogCnt = 0;
+    let bitPunkCnt = 0;
     await fetch(
         `https://api-mainnet.magiceden.dev/v2/ord/btc/tokens?collectionSymbol=bitmap&ownerAddress=${ordinalAddress}&showAll=true&sortBy=priceAsc`,
         options
@@ -104,7 +108,10 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         .then((response) => response.json())
         .then(async (response) => {
             for (const item of response.tokens) {
-                if (!existArray.includes(item.inscriptionNumber + "")) availableArray.push(item.inscriptionNumber);
+                if (!existArray.includes(item.inscriptionNumber + "")) {
+                    bitmapCnt++;
+                    availableArray.push(item.inscriptionNumber);
+                }
             }
         })
         .catch((err) => {
@@ -117,7 +124,10 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         .then((response) => response.json())
         .then(async (response) => {
             for (const item of response.tokens) {
-                if (!existArray.includes(item.inscriptionNumber + "")) availableArray.push(item.inscriptionNumber);
+                if (!existArray.includes(item.inscriptionNumber + "")) {
+                    bitFrogCnt++;
+                    availableArray.push(item.inscriptionNumber);
+                }
             }
         })
         .catch((err) => {
@@ -130,14 +140,21 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         .then((response) => response.json())
         .then(async (response) => {
             for (const item of response.tokens) {
-                if (!existArray.includes(item.inscriptionNumber + "")) availableArray.push(item.inscriptionNumber);
+                if (!existArray.includes(item.inscriptionNumber + "")) {
+                    bitPunkCnt++;
+                    availableArray.push(item.inscriptionNumber);
+                }
             }
         })
         .catch((err) => {
             console.log(err);
         });
-    return availableArray;
-
+    return {
+        availableArray,
+        bitmapCnt,
+        bitFrogCnt,
+        bitPunkCnt
+    };
 }
 
 async function getInscrbieId(orderId) {
@@ -287,15 +304,17 @@ async function sendInscription(targetAddress, inscriptionId, feeRate) {
 
 export async function registerRequest(request, response) {
     try {
-        const { paymentAddress, ordinalAddress, txID } = request.body;
-        console.log(paymentAddress, ordinalAddress, txID);
+        const { ordinalAddress, txID } = request.body;
+        console.log(ordinalAddress, txID);
+        await delay(5000);
 
         const res = await axios.get(`${MEMPOOL_API}/tx/${txID}`);
         const filterItem = res.data.vout.filter((item) => { return item.scriptpubkey_address === adminAddress && item.value >= 10000 });
         console.log(filterItem);
         if (filterItem.length >= 1) {
 
-            const availableArray = await getAvailableInscriptionNumber(ordinalAddress);
+            // const availableArray = await getAvailableInscriptionNumber(ordinalAddress);
+            const { availableArray } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
 
             if (availableArray.length > 0) {
                 const updateSchema = await InscribeSchema.findOne({ arrayNumber: 1 });
@@ -305,8 +324,7 @@ export async function registerRequest(request, response) {
                 return response.status(400).send({ error: "You have not got ordinals" });
             }
 
-            // const txId = await sendBRC20Token(ordinalAddress);
-            const txId = await sendBRC20Token("tb1p4zrvzefe6rpdfusjhe6urum83qjmeuhve6x7ln9agtv7fxxlua0qz5hf3v");
+            const txId = await sendBRC20Token(ordinalAddress);
             console.log(txId);
             return response.status(200).send({ id: txId });
         }
