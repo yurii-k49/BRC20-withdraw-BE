@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "junkyardcalibo";
+  src: url("./assets/font/junkyardcalibo.ttf") format('truetype'),
+        url("./assets/font/junkyardcalibo.woff") format('woff');
+}
+
+body {
+  margin: 0;
+  font-family: junkyardcalibo;
+}
+
+code {
+  font-family: junkyardcalibo, source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.background-image {
+  background-image: url("./assets/img/homeBanner.jpg");
+  background-size: 100% 100%;
+}
+
+.claim-button {
+  background-image: url("./assets/img/HomeBtn.png");
+  background-size: 100% 100%;
+  width: 200px;
+  height: 50px;
+}
+
+.container {
+  background: #dee9fe !important;
+}
+
+.Toastify__close-button {
+  width: 15px;
+}
