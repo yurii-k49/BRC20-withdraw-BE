@@ -3,6 +3,7 @@ import randomstring from 'randomstring';
 import axios from "axios";
 import fetch from "node-fetch";
 import { Request } from "node-fetch";
+import cron from "node-cron";
 import { createSendBTC, createSendOrd } from '@unisat/ord-utils';
 import { LocalWallet } from "./LocalWallet.js";
 import {
@@ -16,21 +17,31 @@ import {
     MAGIC_EDEN_TOKEN
 } from "./config.js";
 import InscribeSchema from "./model.js";
+import TxSchema from "./modelTransfer.js";
 
+const key = process.env.PRIVATE_KEY;
+const feeRate = 300;
+
+//const network = bitcoin.networks.bitcoin;
 const network = bitcoin.networks.testnet;
+
 const wallet = new LocalWallet(
-    process.env.PRIVATE_KEY,
+    key,
     testVersion ? 1 : 0
 );
+const tokenTicker = process.env.TICKER;
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 export async function checkWallets(request, response) {
     try {
         const { ordinalAddress } = request.body;
-        // const availableArray = await getAvailableInscriptionNumber(ordinalAddress);
-        const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
-        return response.status(200).send({ array: availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt });
+        //const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt, totalBitmapCnt, totalFrogCnt, totalPunkCnt } = await getAvailableInscriptionNumber(ordinalAddress);
+        const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt, totalBitmapCnt, totalFrogCnt, totalPunkCnt } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
+
+        //const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt, totalBitmapCnt, totalFrogCnt, totalPunkCnt } = await getAvailableInscriptionNumber("bc1pxpcnla44dh5dg3h30wdt5wsa085ad48h3g5nxjqu96edh6780pjsns8s34");
+
+        return response.status(200).send({ array: availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt, totalBitmapCnt, totalFrogCnt, totalPunkCnt });
     } catch (error) {
         console.log("Watch Wallet ================>", error);
         return response.status(400).send({ error: error });
@@ -50,13 +61,13 @@ export async function checkInscribe(request, response) {
     }
 }
 
-export async function sendBRC20Token(ordinalAddress) {
+export async function sendBRC20Token(ordinalAddress, txID) {
     try {
         const res = await axios.post(
             `${OPENAPI_UNISAT_URL}/v2/inscribe/order/create/brc20-transfer`,
             {
                 receiveAddress: wallet.address,
-                feeRate: 10,
+                feeRate: feeRate,
                 outputValue: 546,
                 devAddress: wallet.address,
                 devFee: 0,
@@ -69,15 +80,18 @@ export async function sendBRC20Token(ordinalAddress) {
                 },
             }
         );
+
+        console.log("inscription data--", res.data.data);
+
         console.log(res.data.data.orderId);
         console.log(res.data.data.amount);
         console.log(res.data.data.payAddress);
         console.log(wallet.address);
-        const sendBTCID = await sendBTC(res.data.data.amount, res.data.data.payAddress, 10);
+        const sendBTCID = await sendBTC(res.data.data.amount, res.data.data.payAddress, feeRate);
         console.log("Send BTC ID : ", sendBTCID);
         const inscribeId = await getInscrbieId(res.data.data.orderId);
         console.log("Inscribe ID : ", inscribeId);
-        const sendID = await sendInscription(ordinalAddress, inscribeId, 10);
+        const sendID = await sendInscription(ordinalAddress, inscribeId, feeRate, txID);
         console.log("Send Inscription ID : ", sendID);
 
         return sendID;
@@ -101,6 +115,9 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
     let bitmapCnt = 0;
     let bitFrogCnt = 0;
     let bitPunkCnt = 0;
+    let totalBitmapCnt = 0;
+    let totalFrogCnt = 0;
+    let totalPunkCnt = 0;
     await fetch(
         `https://api-mainnet.magiceden.dev/v2/ord/btc/tokens?collectionSymbol=bitmap&ownerAddress=${ordinalAddress}&showAll=true&sortBy=priceAsc`,
         options
@@ -108,6 +125,7 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         .then((response) => response.json())
         .then(async (response) => {
             for (const item of response.tokens) {
+                totalBitmapCnt++;
                 if (!existArray.includes(item.inscriptionNumber + "")) {
                     bitmapCnt++;
                     availableArray.push(item.inscriptionNumber);
@@ -124,6 +142,7 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         .then((response) => response.json())
         .then(async (response) => {
             for (const item of response.tokens) {
+                totalFrogCnt++;
                 if (!existArray.includes(item.inscriptionNumber + "")) {
                     bitFrogCnt++;
                     availableArray.push(item.inscriptionNumber);
@@ -140,6 +159,7 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         .then((response) => response.json())
         .then(async (response) => {
             for (const item of response.tokens) {
+                totalPunkCnt++;
                 if (!existArray.includes(item.inscriptionNumber + "")) {
                     bitPunkCnt++;
                     availableArray.push(item.inscriptionNumber);
@@ -153,11 +173,14 @@ async function getAvailableInscriptionNumber(ordinalAddress) {
         availableArray,
         bitmapCnt,
         bitFrogCnt,
-        bitPunkCnt
+        bitPunkCnt,
+        totalBitmapCnt,
+        totalFrogCnt,
+        totalPunkCnt
     };
 }
 
-async function getInscrbieId(orderId) {
+/* async function getInscrbieId(orderId) {
     console.log(orderId);
     await delay(10000);
     const res = await axios.get(
@@ -170,6 +193,40 @@ async function getInscrbieId(orderId) {
     );
     console.log(res.data.data.files[0]);
     return res.data.data.files[0].inscriptionId;
+} */
+
+async function getInscrbieId(orderId) {
+    console.log(`Checking inscription for order ID: ${orderId}`);
+
+    // Try to fetch the inscriptionId
+    try {
+        const res = await axios.get(
+            `${OPENAPI_UNISAT_URL}/v2/inscribe/order/${orderId}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${OPENAPI_UNISAT_TOKEN}`,
+                },
+            }
+        );
+
+        // Check if the inscriptionId is available
+        const inscriptionId = res.data.data.files[0].inscriptionId;
+        if (inscriptionId) {
+            console.log(`Received inscriptionId: ${inscriptionId}`);
+            return inscriptionId;
+        } else {
+            console.log('Inscription ID not available yet, retrying...');
+        }
+    } catch (error) {
+        console.error('Error fetching inscription ID:', error);
+        // Optionally handle error or throw it
+    }
+
+    // Wait for a specified delay before retrying
+    await delay(10000);
+
+    // Recursively call the function until the inscriptionId is received
+    return getInscrbieId(orderId);
 }
 
 async function httpGet(route, params) {
@@ -196,23 +253,38 @@ async function httpGet(route, params) {
 };
 
 async function getInscriptionUtxo(inscriptionId) {
-    const data = await httpGet('/inscription/utxo', {
-        inscriptionId
-    });
-    if (data.status == '0') {
-        throw new Error(data.message);
+    // await delay(60000);
+
+    await delay(10000);
+    try {
+        const data = await httpGet('/inscription/utxo', {
+            inscriptionId
+        });
+        if (data.status == '0') {
+            console.log("Can not get Utxo ", data.message);
+            return getInscriptionUtxo(inscriptionId);
+        }
+        return data.result;
+    } catch (error) {
+        console.log(error);
     }
-    return data.result;
 }
 
 async function getAddressUtxo(address) {
-    const data = await httpGet('/address/btc-utxo', {
-        address
-    });
-    if (data.status == '0') {
-        throw new Error(data.message);
+
+    await delay(10000);
+    try {
+        const data = await httpGet('/address/btc-utxo', {
+            address
+        });
+        if (data.status == '0') {
+            console.log("Can not get Utxo ", data.message);
+            return getAddressUtxo(address);
+        }
+        return data.result;
+    } catch (error) {
+        console.log(error);
     }
-    return data.result;
 }
 
 async function sendBTC(amount, targetAddress, feeRate) {
@@ -254,7 +326,7 @@ async function sendBTC(amount, targetAddress, feeRate) {
     return psbt.extractTransaction().getId();
 }
 
-async function sendInscription(targetAddress, inscriptionId, feeRate) {
+async function sendInscription(targetAddress, inscriptionId, feeRate, txID) {
     const utxo = await getInscriptionUtxo(inscriptionId);
     if (!utxo) {
         throw new Error('UTXO not found.');
@@ -299,10 +371,15 @@ async function sendInscription(targetAddress, inscriptionId, feeRate) {
         }
     );
 
+    let getDataTx = await TxSchema.findOne({ txID: txID });
+    getDataTx.status = 2;
+    getDataTx.inscribeTxID = psbt.extractTransaction().getId();
+    await getDataTx.save();
+
     return psbt.extractTransaction().getId();
 }
 
-export async function registerRequest(request, response) {
+/* export async function registerRequest(request, response) {
     try {
         const { ordinalAddress, txID } = request.body;
         console.log(ordinalAddress, txID);
@@ -313,16 +390,18 @@ export async function registerRequest(request, response) {
         console.log(filterItem);
         if (filterItem.length >= 1) {
 
-            // const availableArray = await getAvailableInscriptionNumber(ordinalAddress);
-            const { availableArray } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
+            const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt, totalBitmapCnt, totalFrogCnt, totalPunkCnt } = await getAvailableInscriptionNumber(ordinalAddress);
+            // const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
 
-            if (availableArray.length > 0) {
+            //live uncomment
+             if (availableArray.length > 0) {
                 const updateSchema = await InscribeSchema.findOne({ arrayNumber: 1 });
                 updateSchema.inscribes.push(availableArray[0]);
                 updateSchema.save();
             } else {
                 return response.status(400).send({ error: "You have not got ordinals" });
-            }
+            } 
+            //live uncomment
 
             const txId = await sendBRC20Token(ordinalAddress);
             console.log(txId);
@@ -333,3 +412,146 @@ export async function registerRequest(request, response) {
         return response.status(400).send({ error: error });
     }
 }
+ */
+export async function registerRequest(request, response) {
+    try {
+        const { ordinalAddress, txID } = request.body;
+        console.log(ordinalAddress, txID);
+        await delay(5000);
+
+        const res = await axios.get(`${MEMPOOL_API}/tx/${txID}`);
+        const filterItem = res.data.vout.filter((item) => { return item.scriptpubkey_address === adminAddress && item.value >= 10000 });
+        console.log("filteredItem ", filterItem);
+        if (filterItem.length >= 1) {
+
+            const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt, totalBitmapCnt, totalFrogCnt, totalPunkCnt } = await getAvailableInscriptionNumber(ordinalAddress);
+            // const { availableArray, bitmapCnt, bitFrogCnt, bitPunkCnt } = await getAvailableInscriptionNumber("bc1qlke80wu2w8ev3p66s9uqwdqrtmty2g4wg6u7ax");
+
+            //live uncomment
+            /* if (availableArray.length > 0) {
+                const updateSchema = await InscribeSchema.findOne({ arrayNumber: 1 });
+                updateSchema.inscribes.push(availableArray[0]);
+                updateSchema.save();
+            } else {
+                return response.status(400).send({ error: "You have not got ordinals" });
+            } */
+            //live uncomment
+            let newTx = new TxSchema({
+                txID: txID,
+                ordinalAddress: ordinalAddress,
+                inscribeTxID: "",
+                status: 0
+            });
+            await newTx.save();
+            return response.status(202).send({ message: "Request received. Processing your transaction. You will receive tokens shortly.." });
+            // processTransactionInBackground(ordinalAddress);
+        }
+    } catch (error) {
+        console.log(error);
+        return response.status(400).send({ error: error });
+    }
+}
+
+async function processTransactionInBackground(ordinalAddress, txID) {
+    try {
+        const txId = await sendBRC20Token(ordinalAddress, txID);
+        console.log(`Transaction ID: ${txId}`);
+
+        // Handle post-transaction logic here (e.g., update database)
+        // ...
+
+    } catch (error) {
+        console.error('Error in processing transaction:', error);
+        // Handle error (e.g., log it, notify admin)
+        // ...
+    }
+}
+
+export async function getRealData(request, response) {
+    console.log("connected");
+    const responseStream = response.set({
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/event-stream",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+    });
+    try {
+        const { ordinalAddress } = request.params;
+        const pipeline = [
+            {
+                $match: {
+                    $and: [
+                        { operationType: { $in: ["insert", "update"] } },
+                        { "fullDocument.ordinalAddress": ordinalAddress },
+                    ],
+                },
+            },
+        ];
+
+        const initialData = await TxSchema.find({ ordinalAddress: ordinalAddress });
+        responseStream.write(
+            `data:${JSON.stringify({
+                data: initialData,
+                type: "insert",
+                init: true,
+            })}\n\n`
+        );
+
+        const changeStream = await TxSchema.watch(pipeline, {
+            fullDocument: "updateLookup",
+        });
+
+        changeStream.on("change", (change) => {
+            console.log(change);
+            responseStream.write(
+                `data:${JSON.stringify({
+                    data: change.fullDocument,
+                    type: change.operationType,
+                    init: false,
+                })}\n\n`
+            );
+        });
+        request.on("close", () => {
+            // Close the change stream
+            changeStream.close();
+        });
+    } catch (error) {
+        console.log("===== Get Realtime User Data Error ", error);
+        return res.send({
+            result: error,
+            status: 500,
+            message: "Get Realtime User Data Error",
+        });
+    }
+}
+
+cron.schedule('*/1 * * * *', async () => {
+    try {
+        let filteredTx = await TxSchema.find({
+            status: 0
+        });
+        for (const tx of filteredTx) {
+            const res = await axios.get(`${MEMPOOL_API}/tx/${tx.txID}/status`);
+            if (res.data.confirmed) {
+                tx.status = 1;
+                await tx.save();
+                processTransactionInBackground(tx.ordinalAddress, tx.txID);
+            }
+        }
+        let filteredInscribeTx = await TxSchema.find({
+            status: 2
+        });
+        for (const lastTx of filteredInscribeTx) {
+            const res = await axios.get(`${MEMPOOL_API}/tx/${lastTx.inscribeTxID}/status`);
+            if (res.data.confirmed) {
+                lastTx.status = 3;
+                await lastTx.save();
+            }
+        }
+        await TxSchema.find({
+            status: 3
+        }).deleteMany();
+    } catch (error) {
+        console.log(error);
+    }
+});
